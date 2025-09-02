@@ -1,59 +1,42 @@
 const express = require('express');
 const morgan = require('morgan');
 const dotenv = require('dotenv');
-const e = require('express');
 const app = express();
 dotenv.config();
-const MAX_ID = 10000;
-const persons = [
-    { 
-      "id": "1",
-      "name": "Arto Hellas", 
-      "number": "040-123456"
-    },
-    { 
-      "id": "2",
-      "name": "Ada Lovelace", 
-      "number": "39-44-5323523"
-    },
-    { 
-      "id": "3",
-      "name": "Dan Abramov", 
-      "number": "12-43-234345"
-    },
-    { 
-      "id": "4",
-      "name": "Mary Poppendieck", 
-      "number": "39-23-6423122"
-    }
-]
-const generateId = () => {
-    const min = persons.length + 1;
-    return (Math.floor(Math.random() * (MAX_ID-min))+min);
-}
+const PhoneBook = require('./models/Phonebook');
+const mongoose = require('mongoose');
+const url = process.env.MONGODB_URI;
+mongoose.set("strictQuery", false);
+
 app.use(express.static('dist'))
 app.use(express.json());
 app.use(morgan(':method :url :status :res[content-length] - :response-time ms :body'));
 morgan.token('body', function(req,res) {
     return JSON.stringify(req.body);
 });
-app.get('/', (req, res) => {    console.log('PhoneBook App')});
+
+app.get('/', (req, res) => {console.log('PhoneBook App')});
 app.get('/info', (req, res) => {
   const timestamp = new Date();
   console.log(timestamp);
-  res.send(`Phonebook has info for ${persons.length} people <br>${timestamp}`);
+    PhoneBook.find({}).then(persons => {
+      res.send(`Phonebook has info for ${persons.length} people <br>${timestamp}`);
+    });
 });
 app.get('/api/persons', (req, res) => {
-    res.json(persons);
+    PhoneBook.find({}).then(persons => {
+      res.json(persons);
+    });
 });
 app.get('/api/persons/:id',(req,res)=>{
     const id  = req.params.id;
-    const person = persons.find(p => p.id === id);
-    if (person) {
-        res.json(person);
-    } else {
-        res.status(404).send({ error: 'Person not found' });
-    }
+    PhoneBook.findById(id).then(person => {
+      if (person) {
+          res.json(person);
+      } else {
+          res.status(404).send({ error: 'Person not found' });
+      }
+    });
 });
 app.delete('/api/persons/:id', (req, res) => {
     const id = req.params.id;
@@ -71,24 +54,32 @@ app.delete('/api/persons/:id', (req, res) => {
 });
 app.post('/api/persons', (req, res) => {
     console.log(req.body);
-    const { name, number } = req.body;
-    if (!name || !number) {
+    const body = req.body;
+    if(!body) {
+        return res.status(400).send({ error: 'Content is missing' });
+    }
+    const newPerson = new PhoneBook({ name:body.name, number:body.number });
+    if (!body.name || !body.number) {
         return res.status(400).send({ error: 'Name and number are required' });
     }
-    if (persons.find(p => p.name === name)) {
-        console.log('Name must be unique');
-        return res.status(400).send({ error: 'Name must be unique' });
-    }
-    const newPerson = {
-        id: String(generateId()),
-        name,
-        number
-    };
+    // if (persons.find(p => p.name === name)) {
+    //     console.log('Name must be unique');
+    //     return res.status(400).send({ error: 'Name must be unique' });
+    // }
     console.log(newPerson);
-    persons.push(newPerson);
-    res.status(200).json(newPerson);
+    newPerson.save().then(savedPerson => {
+      res.status(200).json(savedPerson);
+    });
 })
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+
+mongoose.connect(url)
+        .then(() => {
+            console.log('Connected to MongoDB');
+            app.listen(PORT, () => {
+                console.log(`Server is running on port ${PORT}`);
+            });
+        })
+        .catch(err => {
+            console.error('Error connecting to MongoDB:', err);
+        });

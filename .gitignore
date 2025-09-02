@@ -1,3 +1,4 @@
 node_modules/
+.env
 # Ignore .DS_Store files
 **find . -name ".DS_Store" -print -delete/.DS_Store
