@@ -14,7 +14,17 @@ app.use(morgan(':method :url :status :res[content-length] - :response-time ms :b
 morgan.token('body', function(req,res) {
     return JSON.stringify(req.body);
 });
+const errorHandler = (error, request, response, next) => {
+  console.error(error.message)
 
+  if (error.name === 'CastError') {
+    return response.status(400).send({ error: 'malformatted id' })
+  }
+  if(error.name === 'ValidationError') {
+    return response.status(400).send({ error: error.message })
+  }
+  next(error)
+}
 app.get('/', (req, res) => {console.log('PhoneBook App')});
 app.get('/info', (req, res) => {
   const timestamp = new Date();
@@ -28,7 +38,7 @@ app.get('/api/persons', (req, res) => {
       res.json(persons);
     });
 });
-app.get('/api/persons/:id',(req,res)=>{
+app.get('/api/persons/:id',(req,res,next)=>{
     const id  = req.params.id;
     PhoneBook.findById(id).then(person => {
       if (person) {
@@ -36,50 +46,70 @@ app.get('/api/persons/:id',(req,res)=>{
       } else {
           res.status(404).send({ error: 'Person not found' });
       }
+    })
+    .catch(err => {
+      next(err);
     });
 });
-app.delete('/api/persons/:id', (req, res) => {
+app.delete('/api/persons/:id', (req, res, next) => {
     const id = req.params.id;
     if (!id) {
         return res.status(400).send({ error: 'ID is required' });
     }
-    const personIndex = persons.findIndex(p => p.id === id);
-    if (personIndex !== -1) {
-        persons.splice(personIndex, 1);
-        console.log(persons);
-        res.status(204).json(persons);
-    } else {
-        res.status(404).send({ error: 'Person not found' });
-    }
-});
-app.post('/api/persons', (req, res) => {
-    console.log(req.body);
-    const body = req.body;
-    if(!body) {
-        return res.status(400).send({ error: 'Content is missing' });
-    }
-    const newPerson = new PhoneBook({ name:body.name, number:body.number });
-    if (!body.name || !body.number) {
-        return res.status(400).send({ error: 'Name and number are required' });
-    }
-    // if (persons.find(p => p.name === name)) {
-    //     console.log('Name must be unique');
-    //     return res.status(400).send({ error: 'Name must be unique' });
-    // }
-    console.log(newPerson);
-    newPerson.save().then(savedPerson => {
-      res.status(200).json(savedPerson);
-    });
-})
-const PORT = process.env.PORT || 3001;
-
-mongoose.connect(url)
+    PhoneBook.findByIdAndDelete(id)
         .then(() => {
-            console.log('Connected to MongoDB');
-            app.listen(PORT, () => {
-                console.log(`Server is running on port ${PORT}`);
-            });
+            res.status(204).end();
         })
         .catch(err => {
-            console.error('Error connecting to MongoDB:', err);
+            next(err);
         });
+});
+app.post('/api/persons', (req, res, next) => {
+    console.log('logging incoming request', req.body);
+    const body = req.body;
+    if(!body.name || !body.number) {
+        return res.status(400).send({ error: 'Request Body Missing' });
+    }
+    const newPerson = new PhoneBook({ name:body.name, number:body.number });
+    // PhoneBook.findOne({ name: body.name }).then(existingPerson => { 
+    //     if (existingPerson) {
+    //         console.log('Name must be unique');
+    //         return res.status(400).send({ error: 'Name must be unique' });
+    //     }   
+    // });
+    console.log('logging new person', newPerson);
+    newPerson.save().then(savedPerson => {
+        res.status(200).json(savedPerson);
+    }).catch(err => {
+        console.error('Error saving person:', err);
+        next(err);
+    });
+})
+app.put('/api/persons/:id', (req, res, next) => {
+    const id = req.params.id;
+    const body = req.body;
+    console.log('logging incoming request', body)
+    PhoneBook.findByIdAndUpdate(id, body, { new: true })
+        .then(updatedPerson => {
+            if (updatedPerson) {
+                res.json(updatedPerson);
+            } else {
+                res.status(404).send({ error: 'Person not found' });
+            }
+        })
+        .catch(err => {
+            next(err);
+        });
+});
+app.use(errorHandler);
+const PORT = process.env.PORT || 3001;
+mongoose.connect(url)
+    .then(() => {
+        console.log('Connected to MongoDB');
+    })
+    .catch(err => {
+        console.error('Error connecting to MongoDB:', err);
+    });
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});

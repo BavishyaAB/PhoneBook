@@ -1,7 +1,22 @@
 const mongoose = require('mongoose');
 const PhoneBookSchema = new mongoose.Schema({
-  name: String,
-  number: String,
+  name: {
+    type: String,
+    required: true,
+    minlength: 5,
+    maxlength: 100
+  },
+  number: {
+    type: String,
+    validate: {
+      validator: function(v) {
+        return /^\d{2,3}-\d+$/.test(v);
+      },
+    },
+    required: true,
+    minlength: 8,
+    maxlength: 15
+  },
 });
 
 PhoneBookSchema.set('toJSON', {
